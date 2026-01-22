@@ -1,34 +1,47 @@
 import asyncio
 
 from task.clients.client import DialClient
+from task.clients.custom_client import DialClient as CustomDialClient
 from task.constants import DEFAULT_SYSTEM_PROMPT
 from task.models.conversation import Conversation
 from task.models.message import Message
 from task.models.role import Role
 
 
-async def start(stream: bool) -> None:
-    #TODO:
-    # 1.1. Create DialClient
-    #    - deployment_name: available gpt model. Sample: `gpt-4o`
-    #      (you can get available deployment_name via https://ai-proxy.lab.epam.com/openai/models
-    #       you can import Postman collection to make a request, file in the project root `dial-basics.postman_collection.json`
-    #       don't forget to add your API_KEY)
-    # 1.2. Create CustomDialClient
-    # 2. Create Conversation object
-    # 3. Get System prompt from console or use default -> constants.DEFAULT_SYSTEM_PROMPT and add to conversation
-    #    messages. To do that use the `input()` function
-    # 4. Use infinite cycle (while True) and get yser message from console
-    # 5. If user message is `exit` then stop the loop
-    # 6. Add user message to conversation history (role 'user')
-    # 7. If `stream` param is true -> call DialClient#get_completion()
-    #    else -> call DialClient#stream_completion()
-    # 8. Add generated message to history
-    # 9. Test it with DialClient and CustomDialClient
-    # 10. In CustomDialClient add print of whole request and response to see what you send and what you get in response
-    raise NotImplementedError
+def get_user_input(prompt: str) -> str:
+    try:
+        return input(prompt)
+    except EOFError:
+        return 'exit'
 
 
-asyncio.run(
-    start(True)
-)
+async def start(stream: bool = True, use_custom: bool = False) -> None:
+    # 1.1/1.2: Choose client
+    deployment_name = 'gpt-4o'  # Or let user choose
+    ClientClass = CustomDialClient if use_custom else DialClient
+    client = ClientClass(deployment_name)
+    # 2. Conversation object
+    conversation = Conversation()
+    # 3. System prompt
+    system_prompt = get_user_input("Provide System prompt or press 'enter' to continue.\n> ")
+    if not system_prompt.strip():
+        system_prompt = DEFAULT_SYSTEM_PROMPT
+    conversation.add_message(Message(role=Role.SYSTEM, content=system_prompt))
+    print("\nType your question or 'exit' to quit.")
+    while True:
+        user_input = get_user_input('> ')
+        if user_input.strip().lower() == 'exit':
+            print('Exiting the chat. Goodbye!')
+            break
+        if not user_input.strip():
+            continue
+        conversation.add_message(Message(role=Role.USER, content=user_input))
+        if stream:
+            ai_message = await client.stream_completion(conversation.get_messages())
+        else:
+            ai_message = client.get_completion(conversation.get_messages())
+        conversation.add_message(ai_message)
+
+if __name__ == "__main__":
+    # You can toggle stream/custom here
+    asyncio.run(start(stream=True, use_custom=False))
